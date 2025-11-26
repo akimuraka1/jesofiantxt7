@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""
-TeacherApp.py
-
-Версия приложения для преподавателя — создание и управление тестами.
-- Тёмная тема (Tkinter)
-- SQLite для хранения тестов/вопросов/результатов
-- Черновик (Canvas) для рисования/набросков (можно сохранить)
-- Комментарии и подсказки на русском (учебный стиль)
-"""
 
 import os
 import sqlite3
@@ -15,22 +6,10 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from datetime import datetime
 
-# Попытка подключить Pillow для сохранения PNG из Canvas (опционально)
-# try:
-#     from PIL import Image, ImageGrab
-#     PIL_AVAILABLE = True
-# except Exception:
-#     PIL_AVAILABLE = False
-
-# ----------------------------- БАЗА ДАННЫХ -----------------------------
-# Функции для работы с SQLite: создание структуры, вставка и получение данных.
-
 def create_db_if_not_exists(db_path):
-    """Создаёт файл БД и нужные таблицы, если их ещё нет. Возвращает соединение."""
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
-    # Таблица тестов — мета-информация о тесте
     cur.execute("""
     CREATE TABLE IF NOT EXISTS tests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +20,7 @@ def create_db_if_not_exists(db_path):
     )
     """)
 
-    # Таблица вопросов: храним до 6 опций (NULL если нет)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS questions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +32,7 @@ def create_db_if_not_exists(db_path):
     )
     """)
 
-    # Таблица результатов (преподаватель может посмотреть)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS results (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,13 +46,13 @@ def create_db_if_not_exists(db_path):
     )
     """)
 
-        # Таблица черновиков
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS sketches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        result_id INTEGER,        -- связываем с результатом теста
+        result_id INTEGER,
         student_name TEXT,
-        sketch BLOB,              -- бинарные данные (PNG)
+        sketch BLOB,
         created_at TEXT,
         FOREIGN KEY(result_id) REFERENCES results(id)
     )
@@ -84,7 +63,6 @@ def create_db_if_not_exists(db_path):
     return conn
 
 def insert_test(conn, title, subject, difficulty):
-    """Вставляет запись о тесте и возвращает id теста."""
     cur = conn.cursor()
     cur.execute("INSERT INTO tests (title, subject, difficulty, created_at) VALUES (?, ?, ?, ?)",
                 (title, subject, difficulty, datetime.utcnow().isoformat()))
@@ -92,7 +70,6 @@ def insert_test(conn, title, subject, difficulty):
     return cur.lastrowid
 
 def insert_question(conn, test_id, qtext, options, correct_index):
-    """Добавляет вопрос с options (список до 6 строк) и индексом правильного варианта."""
     opts = options + [None] * (6 - len(options))
     cur = conn.cursor()
     cur.execute("""
@@ -102,13 +79,11 @@ def insert_question(conn, test_id, qtext, options, correct_index):
     conn.commit()
 
 def get_tests(conn):
-    """Возвращает список тестов (id, title, subject, difficulty)."""
     cur = conn.cursor()
     cur.execute("SELECT id, title, subject, difficulty FROM tests ORDER BY id")
     return cur.fetchall()
 
 def get_questions_for_test(conn, test_id):
-    """Возвращает вопросы для теста в виде списка (id, qtext, [opts], correct_index)."""
     cur = conn.cursor()
     cur.execute("SELECT id, qtext, opt1, opt2, opt3, opt4, opt5, opt6, correct_index FROM questions WHERE test_id=? ORDER BY id", (test_id,))
     rows = cur.fetchall()
@@ -122,87 +97,62 @@ def get_questions_for_test(conn, test_id):
     return out
 
 def delete_test_and_questions(conn, test_id):
-    """Удаляет тест и его вопросы."""
     cur = conn.cursor()
     cur.execute("DELETE FROM questions WHERE test_id=?", (test_id,))
     cur.execute("DELETE FROM tests WHERE id=?", (test_id,))
     conn.commit()
 
 def get_results_for_test(conn, test_id):
-    """Возвращает результаты (student_name, score, total, taken_at) для выбранного теста."""
     cur = conn.cursor()
     cur.execute("SELECT student_name, score, total, taken_at FROM results WHERE test_id=? ORDER BY taken_at DESC", (test_id,))
     return cur.fetchall()
 
 def get_sketch_for_result(conn, result_id):
-    """Возвращает PIL.Image из BLOB для результата, если есть."""
     cur = conn.cursor()
     cur.execute("SELECT sketch FROM sketches WHERE result_id=?", (result_id,))
     row = cur.fetchone()
     if row and row[0]:
         from io import BytesIO
-        from PIL import Image
+        from PIL import Image #такой имп больш зашел перешл на прямое рисование а не фото
         return Image.open(BytesIO(row[0]))
     return None
 
-
-# ----------------------------- UI / Преподаватель -----------------------------
-class TeacherApp:
-    """
-    Главное приложение для преподавателя.
-    - Создание / открытие БД
-    - Создание тестов и вопросов
-    - Просмотр / удаление тестов
-    - Просмотр результатов
-    - Черновик (Canvas) для рисования
-    """
+class jeso: # ui
     def __init__(self, root):
         self.root = root
-        root.title("TeacherApp — Преподаватель")
+        root.title("jeso")
         root.geometry("1000x660")
         root.configure(bg="#111111")
 
-        # Переменные состояния
         self.db_path = None
         self.conn = None
-        self.tests_map = {}   # id -> display string
+        self.tests_map = {}
         self.current_test_id = None
 
-        # Настройка UI
         self._build_top_bar()
         self._build_main_area()
 
-    # ----------------- ВЕРХНЯЯ ПАНЕЛЬ -----------------
-    def _build_top_bar(self):
+    def _build_top_bar(self): # верхх
         top = tk.Frame(self.root, bg="#111111")
         top.pack(fill=tk.X, padx=8, pady=8)
 
-        # Кнопки: создать/открыть базу, черновик, выход
         btn_new_db = tk.Button(top, text="Создать новый .db", bg="#2b8", fg="white", command=self.create_new_db)
         btn_open_db = tk.Button(top, text="Открыть .db", bg="#444", fg="white", command=self.open_db)
         btn_quit = tk.Button(top, text="Выход", bg="#333", fg="white", command=self.root.quit)
         btn_view_sketches = tk.Button(top, text="Просмотр черновиков", bg="#555", fg="white", command=self.view_sketches)
-        btn_merge_db = tk.Button(top, text="Объединить БД", bg="#2a8", fg="white", command=self.merge_databases)
-
-
-
-
-
+        btn_merge_db = tk.Button(top, text="Объединить БД", bg="#2a8", fg="white", command=self.merge_databases) # кнопочки
 
 
         btn_new_db.pack(side=tk.LEFT, padx=4)
         btn_open_db.pack(side=tk.LEFT, padx=4)
         btn_quit.pack(side=tk.RIGHT, padx=4)
         btn_view_sketches.pack(side=tk.LEFT, padx=4)
-        btn_merge_db.pack(side=tk.LEFT, padx=4)
+        btn_merge_db.pack(side=tk.LEFT, padx=4) # создание кнопочек
 
-        # Подсказка текущего файла
         self.label_db = tk.Label(top, text="БД: не загружена", bg="#111111", fg="#ddd")
         self.label_db.pack(side=tk.LEFT, padx=8)
 
-    # ----------------- ОСНОВНАЯ ОБЛАСТЬ -----------------
-    def _build_main_area(self):
-        # Левая — список тестов
+    def _build_main_area(self): # осн часть
         main = tk.Frame(self.root, bg="#111111")
         main.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
 
@@ -214,29 +164,25 @@ class TeacherApp:
         self.tests_listbox.pack(pady=6, fill=tk.Y, expand=True)
         self.tests_listbox.bind("<<ListboxSelect>>", self.on_test_select)
 
-        # Правая — действия и детали
         right = tk.Frame(main, bg="#111111")
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=6)
 
-        # Кнопки управления тестами
         btn_frame = tk.Frame(right, bg="#111111")
-        btn_frame.pack(fill=tk.X, pady=6)
+        btn_frame.pack(fill=tk.X, pady=6) # кнопки управл
         tk.Button(btn_frame, text="Создать новый тест", bg="#2b8", fg="white", command=self.create_test_wizard).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_frame, text="Просмотр вопросов", bg="#444", fg="white", command=self.view_questions_of_selected).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_frame, text="Удалить тест", bg="#a33", fg="white", command=self.delete_selected_test).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_frame, text="Просмотреть результаты", bg="#444", fg="white", command=self.view_results_of_selected).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_frame, text="Обновить список", bg="#555", fg="white", command=self.refresh_tests_list).pack(side=tk.LEFT, padx=4)
 
-        # Информационная панель справа
+
         info_frame = tk.Frame(right, bg="#111111")
-        info_frame.pack(fill=tk.BOTH, expand=True, pady=8)
+        info_frame.pack(fill=tk.BOTH, expand=True, pady=8) # инф панель
 
         self.info_label = tk.Label(info_frame, text="Выберите файл БД и создайте тесты.\n\nВ БД можно хранить множество тестов.", justify='left', bg="#111111", fg="#ddd")
         self.info_label.pack(anchor='nw', padx=6, pady=6)
 
-    # ----------------- ФУНКЦИИ РАБОТЫ С БД -----------------
     def create_new_db(self):
-        """Создать новый файл .db и подключиться к нему."""
         path = filedialog.asksaveasfilename(defaultextension=".db", filetypes=[("SQLite DB", "*.db")])
         if not path:
             return
@@ -247,7 +193,6 @@ class TeacherApp:
         self.refresh_tests_list()
 
     def open_db(self):
-        """Открыть существующий файл .db."""
         path = filedialog.askopenfilename(filetypes=[("SQLite DB", "*.db")])
         if not path:
             return
@@ -257,8 +202,7 @@ class TeacherApp:
         messagebox.showinfo("Открыто", f"Открыт файл базы: {path}")
         self.refresh_tests_list()
 
-    def refresh_tests_list(self):
-        """Обновляет список тестов в левой панели."""
+    def refresh_tests_list(self): # обновлени на всякий 
         if not self.conn:
             messagebox.showwarning("Нет БД", "Сначала создайте или откройте файл .db")
             return
@@ -272,35 +216,26 @@ class TeacherApp:
             self.tests_listbox.insert(tk.END, disp)
         self.info_label.config(text=f"Загружено тестов: {len(tests)}")
 
-# gtgrte
-    
-# fgrf
     def merge_databases(self):
-        """Объединяет несколько выбранных БД в новую базу (не нужно заранее открывать целевую)."""
-        # Выбираем файлы исходных БД
         files = filedialog.askopenfilenames(title="Выберите файлы БД для объединения", filetypes=[("SQLite DB","*.db")])
         if not files:
             return
 
-        # Создаём новую БД для объединения
         new_db_path = filedialog.asksaveasfilename(title="Создать объединённую БД", defaultextension=".db", filetypes=[("SQLite DB","*.db")])
         if not new_db_path:
             return
 
-        # Создаём структуру новой БД
         conn = create_db_if_not_exists(new_db_path)
         cur = conn.cursor()
+        merged_tests_count = 0
 
-        merged_count = 0
         for file in files:
             try:
                 src_conn = sqlite3.connect(file)
                 src_cur = src_conn.cursor()
 
-                # Получаем тесты
                 src_cur.execute("SELECT id, title, subject, difficulty, created_at FROM tests")
                 for test_id, title, subject, difficulty, created_at in src_cur.fetchall():
-                    # Проверка: есть ли тест в новой БД
                     cur.execute("SELECT id FROM tests WHERE title=? AND subject=?", (title, subject))
                     row = cur.fetchone()
                     new_test_id = row[0] if row else None
@@ -309,67 +244,64 @@ class TeacherApp:
                                     (title, subject, difficulty, created_at))
                         new_test_id = cur.lastrowid
 
-                    # Копируем вопросы
-                    src_cur.execute("SELECT qtext, opt1, opt2, opt3, opt4, opt5, opt6, correct_index FROM questions WHERE test_id=?",
-                                    (test_id,))
+                    src_cur.execute("SELECT qtext, opt1, opt2, opt3, opt4, opt5, opt6, correct_index FROM questions WHERE test_id=?", (test_id,))
                     for q in src_cur.fetchall():
-                        cur.execute("""
-                            INSERT INTO questions (test_id, qtext, opt1, opt2, opt3, opt4, opt5, opt6, correct_index)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (new_test_id, *q))
+                        qtext = q[0]
+                        cur.execute("SELECT id FROM questions WHERE test_id=? AND qtext=?", (new_test_id, qtext))
+                        if not cur.fetchone():
+                            cur.execute("""
+                                INSERT INTO questions (test_id, qtext, opt1, opt2, opt3, opt4, opt5, opt6, correct_index)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (new_test_id, *q))
 
-                    # Копируем результаты
+                    # Копир результатов с избежанием дубл
                     src_cur.execute("SELECT student_name, score, total, details, taken_at FROM results WHERE test_id=?", (test_id,))
                     for r in src_cur.fetchall():
-                        cur.execute("""
-                            INSERT INTO results (test_id, student_name, score, total, details, taken_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (new_test_id, *r))
+                        student_name, score, total, details, taken_at = r
+                        cur.execute("SELECT id FROM results WHERE test_id=? AND student_name=? AND taken_at=?",
+                                    (new_test_id, student_name, taken_at))
+                        if not cur.fetchone():
+                            cur.execute("INSERT INTO results (test_id, student_name, score, total, details, taken_at) VALUES (?, ?, ?, ?, ?, ?)",
+                                        (new_test_id, student_name, score, total, details, taken_at))
 
-                    # Копируем черновики
-                    src_cur.execute("SELECT student_name, sketch, created_at FROM sketches WHERE result_id IN (SELECT id FROM results WHERE test_id=?)", (test_id,))
+                    src_cur.execute("SELECT student_name, sketch, created_at, result_id FROM sketches WHERE result_id IN (SELECT id FROM results WHERE test_id=?)", (test_id,))
                     for s in src_cur.fetchall():
-                        student_name, sketch, created_at = s
-                        cur.execute("""
-                            SELECT id FROM results WHERE test_id=? AND student_name=? ORDER BY taken_at DESC LIMIT 1
-                        """, (new_test_id, student_name))
+                        student_name, sketch, created_at, src_result_id = s
+                        cur.execute("SELECT id FROM results WHERE test_id=? AND student_name=? ORDER BY taken_at DESC LIMIT 1",
+                                    (new_test_id, student_name))
                         res_row = cur.fetchone()
                         if res_row:
-                            result_id = res_row[0]
-                            cur.execute("""
-                                INSERT INTO sketches (result_id, student_name, sketch, created_at)
-                                VALUES (?, ?, ?, ?)
-                            """, (result_id, student_name, sketch, created_at))
+                            new_result_id = res_row[0]
+                            cur.execute("SELECT id FROM sketches WHERE result_id=? AND student_name=? AND created_at=?", # если ужееее есть
+                                        (new_result_id, student_name, created_at))
+                            if not cur.fetchone():
+                                cur.execute("INSERT INTO sketches (result_id, student_name, sketch, created_at) VALUES (?, ?, ?, ?)",
+                                            (new_result_id, student_name, sketch, created_at))
 
-                    merged_count += 1
-
+                    merged_tests_count += 1
                 conn.commit()
                 src_conn.close()
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Не удалось объединить {file}: {e}")
 
-        messagebox.showinfo("Готово", f"Объединение завершено. Создан файл: {new_db_path}. Обработано {merged_count} тестов.")
+        messagebox.showinfo("Готово", f"Объединение завершено. Создан файл: {new_db_path}. Обработано тестов: {merged_tests_count}.")
+
 
 
 # fgrf
 
     def on_test_select(self, event):
-        """Обработка выбора теста в списке."""
         sel = self.tests_listbox.curselection()
         if not sel:
             self.current_test_id = None
             return
         index = sel[0]
-        # Порядок listbox соответствует списку, поэтому получаем id по индексу
         try:
-            tid = list(self.tests_map.keys())[index]
+            tid = list(self.tests_map.keys())[index]  # создание
             self.current_test_id = tid
         except Exception:
             self.current_test_id = None
-
-    # ----------------- СОЗДАНИЕ ТЕСТА (МАСТЕР) -----------------
     def create_test_wizard(self):
-        """Открывает окно мастера для создания нового теста и вопросов."""
         if not self.conn:
             messagebox.showwarning("Нет БД", "Создайте или откройте файл .db сначала.")
             return
@@ -379,7 +311,6 @@ class TeacherApp:
         wizard.geometry("800x680")
         wizard.configure(bg="#111111")
 
-        # Метаданные теста
         meta_frame = tk.Frame(wizard, bg="#111111")
         meta_frame.pack(fill=tk.X, padx=8, pady=6)
         tk.Label(meta_frame, text="Название теста:", bg="#111111", fg="white").grid(row=0, column=0, sticky='w')
@@ -388,16 +319,14 @@ class TeacherApp:
         tk.Label(meta_frame, text="Предмет:", bg="#111111", fg="white").grid(row=1, column=0, sticky='w')
         entry_subject = tk.Entry(meta_frame, width=30, bg="#222222", fg="white")
         entry_subject.grid(row=1, column=1, sticky='w', padx=6, pady=4)
-        tk.Label(meta_frame, text="Сложность (напр.: Лёгкий/Средний/Сложный):", bg="#111111", fg="white").grid(row=2, column=0, sticky='w')
+        tk.Label(meta_frame, text="Сложность:", bg="#111111", fg="white").grid(row=2, column=0, sticky='w')
         entry_diff = tk.Entry(meta_frame, width=20, bg="#222222", fg="white")
         entry_diff.grid(row=2, column=1, sticky='w', padx=6, pady=4)
 
-        # Список временных вопросов (qtext, options, correct_index)
         questions = []
 
-        # Панель для ввода вопроса
         qpanel = tk.Frame(wizard, bg="#111111")
-        qpanel.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
+        qpanel.pack(fill=tk.BOTH, expand=True, padx=8, pady=6) # ввод
 
         tk.Label(qpanel, text="Текст вопроса:", bg="#111111", fg="white").pack(anchor='w')
         qtext_box = tk.Text(qpanel, height=4, bg="#222222", fg="white")
@@ -417,11 +346,9 @@ class TeacherApp:
         correct_spin = tk.Spinbox(qpanel, from_=1, to=6, textvariable=correct_var, width=5)
         correct_spin.pack(anchor='w')
 
-        # Информационная строка
         info_label = tk.Label(wizard, text="Добавлено вопросов: 0", bg="#111111", fg="white")
         info_label.pack(anchor='w', padx=8, pady=6)
 
-        # Действия: добавить вопрос / сохранить тест
         btn_frame = tk.Frame(wizard, bg="#111111")
         btn_frame.pack(fill=tk.X, padx=8, pady=6)
 
@@ -440,7 +367,6 @@ class TeacherApp:
                 return
             questions.append((qtxt, opts, corr))
             info_label.config(text=f"Добавлено вопросов: {len(questions)}")
-            # очистка полей для нового вопроса
             qtext_box.delete("1.0", tk.END)
             for e in option_entries:
                 e.delete(0, tk.END)
@@ -468,8 +394,7 @@ class TeacherApp:
         btn_finish = tk.Button(btn_frame, text="Завершить и сохранить тест", bg="#2b8", fg="white", command=finish_and_save)
         btn_finish.pack(side=tk.LEFT, padx=6)
 
-    # ----------------- ПРОСМОТР ВОПРОСОВ -----------------
-    def view_questions_of_selected(self):
+    def view_questions_of_selected(self): # начало просмотр
         """Открывает окно просмотра вопросов выбранного теста (только просмотр)."""
         if not self.conn:
             messagebox.showwarning("Нет БД", "Откройте файл .db")
@@ -507,9 +432,7 @@ class TeacherApp:
                 mark = " (правильно)" if (oi-1)==corr else ""
                 tk.Label(f, text=f"   {oi}) {opt}{mark}", fg="#ddd", bg="#222222", wraplength=760, justify='left').pack(anchor='w', padx=12)
 
-    # ----------------- УДАЛЕНИЕ ТЕСТА -----------------
-    def delete_selected_test(self):
-        """Удаляет тест и все его вопросы."""
+    def delete_selected_test(self): # удаление самого тест
         if not self.conn:
             return
         sel = self.tests_listbox.curselection()
@@ -523,9 +446,7 @@ class TeacherApp:
         messagebox.showinfo("Удалено", "Тест удалён.")
         self.refresh_tests_list()
 
-    # ----------------- ПРОСМОТР РЕЗУЛЬТАТОВ -----------------
-    def view_results_of_selected(self):
-        """Показывает список результатов по выбранному тесту."""
+    def view_results_of_selected(self): # просмотр результатов
         if not self.conn:
             return
         sel = self.tests_listbox.curselection()
@@ -592,15 +513,9 @@ class TeacherApp:
                 self.sketch_images.append(tk_img)
                 tk.Label(inner, text=sname, fg="white", bg="#111111").pack(padx=6, pady=(0,8))
 
-
-
-
-
-
-    # ----------------- ЗАПУСК -----------------
 def main():
     root = tk.Tk()
-    app = TeacherApp(root)
+    app = jeso(root)
     root.mainloop()
 
 if __name__ == "__main__":
